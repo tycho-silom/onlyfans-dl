@@ -81,6 +81,9 @@ def api_request(endpoint, getdata = None, postdata = None):
                                     headers=API_HEADER,
                                     params=getparams).json()
                     posts_num = len(list_extend)
+                    
+                    if posts_num < 100:
+                        break
 
                     # Re-add again the updated beforePublishTime/postedAtPrecise params
                     beforePublishTime = list_extend[posts_num-1]['postedAtPrecise']
@@ -88,8 +91,6 @@ def api_request(endpoint, getdata = None, postdata = None):
                     # Merge with previous posts
                     list_base.extend(list_extend)
 
-                    if posts_num < 100:
-                        break
             return list_base
         else:
             return requests.get(URL + API_URL + endpoint,
@@ -229,7 +230,7 @@ if __name__ == "__main__":
     print("\nonlyfans-dl is downloading content to profiles/" + PROFILE + "!\n")
 
     if os.path.isdir("profiles/" + PROFILE):
-        print("\nProfiles/" + PROFILE + " exists.")
+        print("\nThe folder profiles/" + PROFILE + " exists.")
         print("Media already present will not be re-downloaded.")
 
     assure_dir("profiles")
