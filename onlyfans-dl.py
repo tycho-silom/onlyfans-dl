@@ -26,7 +26,33 @@ URL = "https://onlyfans.com"
 API_URL = "/api2/v2"
 APP_TOKEN = "33d57ade8c02dbc5a333db99ff9ae26a"
 
-DEBUG = False
+DEBUG = True
+
+
+def create_signed_headers(link: str, auth_id: int):
+    # Users: 300000 | Creators: 301000
+    time2 = str(int(round(time.time())))
+    path = urlparse(link).path
+    query = urlparse(link).query
+    path = path if not query else f"{path}?{query}"
+    static_param = "cyo3uhuZp5tqYuEAhaVMuXMmPpRRsBq1"
+    a = [static_param, time2, path, str(auth_id)]
+    msg = "\n".join(a)
+    message = msg.encode("utf-8")
+    hash_object = hashlib.sha1(message)
+    sha_1_sign = hash_object.hexdigest()
+    sha_1_b = sha_1_sign.encode("ascii")
+    checksum = sum(
+        [sha_1_b[25], sha_1_b[35], sha_1_b[26], sha_1_b[34], sha_1_b[32], sha_1_b[35], sha_1_b[32], sha_1_b[6], sha_1_b[21], sha_1_b[2],
+         sha_1_b[15], sha_1_b[9], sha_1_b[3], sha_1_b[14], sha_1_b[26], sha_1_b[26],
+         sha_1_b[5], sha_1_b[34], sha_1_b[30], sha_1_b[34], sha_1_b[30], sha_1_b[23], sha_1_b[12], sha_1_b[20],
+         sha_1_b[20], sha_1_b[26], sha_1_b[17], sha_1_b[35],
+         sha_1_b[5], sha_1_b[16], sha_1_b[37], sha_1_b[1]]) - 956
+    headers = {}
+    headers["sign"] = "7:{}:{:x}:6092b93d".format(
+        sha_1_sign, abs(checksum))
+    headers["time"] = time2
+    return headers
 
 
 # move dynamic data out of the __main__
@@ -117,20 +143,14 @@ class ProfileDownload:
         # get all user posts
         print("Finding photos...", end=' ', flush=True)
         photo_posts = self.downloader.api_request("/users/" + profile_id + "/posts/photos", getdata={"limit": POST_LIMIT})
-        if DEBUG:
-            print(f'RESPONSE: {photo_posts}')
         print("Found " + str(len(photo_posts)) + " photos.")
 
         print("Finding videos...", end=' ', flush=True)
         video_posts = self.downloader.api_request("/users/" + profile_id + "/posts/videos", getdata={"limit": POST_LIMIT})
-        if DEBUG:
-            print(f'RESPONSE: {video_posts}')
         print("Found " + str(len(video_posts)) + " videos.")
 
         print("Finding archived content...", end=' ', flush=True)
         archived_posts = self.downloader.api_request("/users/" + profile_id + "/posts/archived", getdata={"limit": POST_LIMIT})
-        if DEBUG:
-            print(f'RESPONSE: {archived_posts}')
         print("Found " + str(len(archived_posts)) + " archived posts.")
 
         postcount = len(photo_posts) + len(video_posts)
@@ -253,34 +273,6 @@ class OnlyFansDownloader:
         for cookie in cookies:
             self.session.cookies.set(**cookie)
 
-    def create_signed_headers(self, link: str):
-        # Users: 300000 | Creators: 301000
-        time2 = str(int(round(time.time())))
-        # time2 = str(1620203709)
-        path = urlparse(link).path
-        query = urlparse(link).query
-        path = path if not query else f"{path}?{query}"
-        static_param = "rhtNVxJh2LD3Jul5MhHcAAnFMysnLlct"
-        msg = "\n".join([static_param, time2, path, self.auth_id])
-        # print(f'CREATING SIGNED HEADER: msg={msg}')
-        message = msg.encode("utf-8")
-        hash_object = hashlib.sha1(message)
-        sha_1_sign = hash_object.hexdigest()
-        sha_1_b = sha_1_sign.encode("ascii")
-        checksum = sum(
-            [sha_1_b[31], sha_1_b[13], sha_1_b[8], sha_1_b[3], sha_1_b[25], sha_1_b[8], sha_1_b[33], sha_1_b[25], sha_1_b[1], sha_1_b[23],
-             sha_1_b[37], sha_1_b[11], sha_1_b[2], sha_1_b[29], sha_1_b[9], sha_1_b[7],
-             sha_1_b[29], sha_1_b[30], sha_1_b[18], sha_1_b[25], sha_1_b[18], sha_1_b[21], sha_1_b[10], sha_1_b[37],
-             sha_1_b[28], sha_1_b[35], sha_1_b[31], sha_1_b[5],
-             sha_1_b[13], sha_1_b[31], sha_1_b[2], sha_1_b[9]]) + 1110
-
-        headers = copy.copy(self.common_headers)
-        headers["sign"] = "6:{}:{:x}:609184ae".format(
-            sha_1_sign, abs(checksum))
-        headers["time"] = time2
-        headers['referer'] = link
-        return headers
-
     def validate_config(self):
         if self.sess == "put-sess-cookie-here" or not self.sess:
             return False
@@ -294,13 +286,19 @@ class OnlyFansDownloader:
         return True
 
     def _request(self, method, link, postdata=None):
-        request_header = self.create_signed_headers(link)
-        # print(f'LINK={link}, headers={request_header}, cookies={session.cookies} postdata={postdata}')
+        request_headers = copy.copy(self.common_headers) | create_signed_headers(link, self.auth_id)
+        request_headers['referer'] = link
 
-        return self.session.request(method=method,
-                                    url=link,
-                                    headers=request_header,
-                                    data=postdata)
+        if DEBUG:
+            print(f'REQUEST: url={link}, headers={request_headers}, cookies={self.session.cookies} postdata={postdata}')
+
+        response = self.session.request(method=method,
+                                        url=link,
+                                        headers=request_headers,
+                                        data=postdata)
+        if DEBUG:
+            print(f'RESPONSE: {response}')
+        return response
 
     def _get_request(self, link):
         return self.session.request(method='GET',
@@ -325,9 +323,6 @@ class OnlyFansDownloader:
 
         if postdata is not None:
             return self._post_request(link, postdata=postdata)
-
-        if getdata is None:
-            return self._get_request(link)
 
         # Fixed the issue with the maximum limit of 100 posts by creating a kind of "pagination"
         list_base = self._get_request(link).json()
@@ -359,9 +354,7 @@ class OnlyFansDownloader:
     # get information about <profile>
     # <profile> = "customer" -> info about yourself
     def get_user_info(self, profile):
-        info = self.api_request("/users/" + profile).json()
-        if DEBUG:
-            print(f'RESPONSE: {info}')
+        info = self.api_request("/users/" + profile)
         if "error" in info:
             print("\nERROR: " + info["error"]["message"])
             print("\nCheck that the script is updated to the latest or that the the values in config.json are correct.")
